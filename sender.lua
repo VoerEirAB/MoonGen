@@ -46,7 +46,7 @@ function loadSlave(dev, queue, numFlows, showStats)
 		}
 	end)
 	bufs = mem:bufArray(128)
-	local baseIP = parseIPAddress("10.0.0.1")
+	local baseIP = parseIPAddress("192.168.111.1")
 	local flow = 0
 	local ctr = stats:newDevTxCounter(dev, "plain")
 	while mg.running() do
