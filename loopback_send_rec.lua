@@ -3,7 +3,13 @@ local memory = require "memory"
 local device = require "device"
 local stats  = require "stats"
 local log    = require "log"
+local timer     = require "timer"
+local dpdk = require "dpdk"
 local PKT_SIZE	= 60
+local RUN_TIME_IN_SEC = 10
+local NUM_FLOWS = 512
+local SRC_PORT_BASE = 1234 -- actual port will be SRC_PORT_BASE * random(NUM_FLOWS)
+local DST_PORT      = 1234
 
 function master(...)
 	local devices = { ... }
@@ -25,40 +31,41 @@ function master(...)
 		end
                 if i == 1 then
                         log:info("Starting sender devices")
-			sender_dev = device.config{ port = i - 1, txQueues = 1 }
+			sender_dev = device.config{ port = i - 1, txQueues = 1,txDescs = 4096, stripVlan = false }
 		else
 			log:info("Starting reciever devices")
-			rec_dev = device.config{ port = i - 1, rxQueues = 1 }
+			rec_dev = device.config{ port = i - 1, rxQueues = 1, rxDescs = 1024 }
 		end
 	end
 	device.waitForLinks()
-	mg.startTask("loadSlave", sender_dev, rec_dev, sender_dev:getTxQueue(0), 256, false)
+	mg.startTask("loadSlave", sender_dev, rec_dev, sender_dev:getTxQueue(0), true)
 	mg.startTask("counterSlave", rec_dev:getRxQueue(0))
 	mg.waitForTasks()
 end
 
 
-function loadSlave(dev, rec_dev, queue, numFlows, showStats)
+function loadSlave(dev, rec_dev, queue,  showStats)
 	local mem = memory.createMemPool(function(buf)
 		buf:getUdpPacket():fill{
 			pktLength = PKT_SIZE,
 			ethSrc = queue,
+			ip4Src = "10.0.37.1",
 			ethDst = rec_dev:getMacString(),
-			ip4Dst = "192.168.11.0",
+			ip4Dst = "10.0.10.3",
 			udpSrc = 1234,
 			udpDst = 5678,	
 		}
 	end)
-	bufs = mem:bufArray(128)
-	local baseIP = parseIPAddress("192.168.111.20")
+	bufs = mem:bufArray(512)
 	local flow = 0
 	local ctr = stats:newDevTxCounter(dev, "plain")
-	while mg.running() do
+	runtime = timer:new(RUN_TIME_IN_SEC)
+        while (runTime == 0 or runtime:running()) and mg.running() do
 		bufs:alloc(PKT_SIZE)
 		for _, buf in ipairs(bufs) do
 			local pkt = buf:getUdpPacket()
-			pkt.ip4.src:set(baseIP + flow)
-			flow = incAndWrap(flow, numFlows)
+			pkt.ip4.src:set(SRC_PORT_BASE + math.random(0, NUM_FLOWS - 1))
+			--flow = incAndWrap(flow, numFlows)
 		end
 		-- UDP checksums are optional, so just IP checksums are sufficient here
 		bufs:offloadIPChecksums()
@@ -76,7 +83,8 @@ function counterSlave(queue)
         -- however, queue statistics are also not yet implemented and the DPDK abstraction is somewhat annoying
         local bufs = memory.bufArray()
         local ctrs = {}
-        while mg.running(100) do
+	runtime = timer:new(RUN_TIME_IN_SEC)
+        while (runTime == 0 or runtime:running()) and mg.running() do
                 local rx = queue:recv(bufs)
                 for i = 1, rx do
                         local buf = bufs[i]

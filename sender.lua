@@ -2,7 +2,7 @@ local mg     = require "moongen"
 local memory = require "memory"
 local device = require "device"
 local stats  = require "stats"
-
+local dpdk       = require "dpdk"
 local PKT_SIZE	= 60
 
 function master(...)
@@ -21,7 +21,7 @@ function master(...)
 			print("could not parse " .. tostring(v))
 			return
 		end
-		devices[i] = { device.config{ port = id, txQueues = cores }, cores }
+		devices[i] = { device.config{ port = id, txQueues = cores, rssFunctions = {dpdk.ETH_RSS_IPV4} }, cores }
 	end
 	device.waitForLinks()
 	for i, dev in ipairs(devices) do
@@ -39,14 +39,14 @@ function loadSlave(dev, queue, numFlows, showStats)
 		buf:getUdpPacket():fill{
 			pktLength = PKT_SIZE,
 			ethSrc = queue,
-			ethDst = "fa:16:3e:10:15:48",
-			ip4Dst = "192.168.111.50",
+			ethDst = "FA:16:3E:B5:61:14",
+			ip4Dst = "10.13.37.1",
 			udpSrc = 1234,
 			udpDst = 5678,	
 		}
 	end)
-	bufs = mem:bufArray(128)
-	local baseIP = parseIPAddress("192.168.111.1")
+	bufs = mem:bufArray(256)
+	local baseIP = parseIPAddress("10.0.42.1")
 	local flow = 0
 	local ctr = stats:newDevTxCounter(dev, "plain")
 	while mg.running() do
@@ -61,6 +61,8 @@ function loadSlave(dev, queue, numFlows, showStats)
 		queue:send(bufs)
 		if showStats then ctr:update() end
 	end
+        bufs:freeAll()
 	if showStats then ctr:finalize() end
+	dev:getStats()
 end
 
