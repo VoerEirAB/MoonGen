@@ -9,10 +9,6 @@ local hist              = require "histogram"
 local timer             = require "timer"
 local log               = require "log"
 
--- check out l3-load-latency.lua if you want to get this via ARP
-local ETH_DST   = "FA:16:3E:10:15:48" -- src mac is taken from the NIC
-local IP_DST    = "10.0.0.1"
-
 function master(...)
         local devices = { ... }
         if #devices == 0 then
@@ -29,13 +25,16 @@ function master(...)
                         print("could not parse " .. tostring(v))
                         return
                 end
-                devices[i] = { device.config{ port = id, txQueues = cores }, cores }
+                devices[i] = { device.config{ port = id, txQueues = 1, rxQueues = cores }, cores }
         end
         device.waitForLinks()
         for i, dev in ipairs(devices) do
                 local dev, cores = unpack(dev)
                 for i = 1, cores do
-                        mg.startTask("counterSlave", dev:getRxQueue(i -1))
+			print("starting on queue#" .. tostring(i - 1))
+			--dev:l2Filter(i , dev:getRxQueue(i - 1))
+			--dev:fiveTupleFilter( { dstIp = "10.13.37.1" } , dev:getRxQueue(i - 1))
+                        mg.startTask("counterSlave", dev:getRxQueue(i - 1))
                 end
         end
         mg.waitForTasks()
@@ -47,7 +46,7 @@ function counterSlave(queue)
         -- however, the current implementation is limited to filtering timestamp packets
         -- (changing this wouldn't be too complicated, have a look at filter.lua if you want to implement this)
         -- however, queue statistics are also not yet implemented and the DPDK abstraction is somewhat annoying
-        local bufs = memory.bufArray()
+        local bufs = memory.bufArray(256)
         local ctrs = {}
         while mg.running(100) do
                 local rx = queue:recv(bufs)
