@@ -27,7 +27,8 @@ function master(...)
 	for i, dev in ipairs(devices) do
 		local dev, cores = unpack(dev)
 		for i = 1, cores do
-			mg.startTask("loadSlave", dev, dev:getTxQueue(i - 1), 256, i == 1)
+			print("starting on queue#%d" .. tostring(i - 1))
+			mg.startTask("loadSlave", dev, dev:getTxQueue(i - 1), 0, i == 1)
 		end
 	end
 	mg.waitForTasks()
@@ -35,17 +36,18 @@ end
 
 
 function loadSlave(dev, queue, numFlows, showStats)
+	queue:setRateMpps(4)
 	local mem = memory.createMemPool(function(buf)
 		buf:getUdpPacket():fill{
 			pktLength = PKT_SIZE,
 			ethSrc = queue,
-			ethDst = "FA:16:3E:B5:61:14",
+			ethDst = "A0:36:9F:D4:3E:B0",
 			ip4Dst = "10.13.37.1",
 			udpSrc = 1234,
 			udpDst = 5678,	
 		}
 	end)
-	bufs = mem:bufArray(256)
+	bufs = mem:bufArray(128)
 	local baseIP = parseIPAddress("10.0.42.1")
 	local flow = 0
 	local ctr = stats:newDevTxCounter(dev, "plain")
