@@ -1,9 +1,17 @@
+--
+-- Created by Ashok Kumar (ashok@voereir.com).
+-- User: ashok
+-- Date: 13/01/17
+-- Time: 4:10 PM
+--
+
 local mg     = require "moongen"
 local memory = require "memory"
 local device = require "device"
 local stats  = require "stats"
 local dpdk       = require "dpdk"
-local PKT_SIZE	= 60
+local PKT_SIZE	= 64
+local RUN_TIME_IN_SEC = 60
 
 function master(...)
 	local devices = { ... }
@@ -44,14 +52,15 @@ function loadSlave(dev, queue, numFlows, showStats)
 			ethDst = "A0:36:9F:D4:3E:B0",
 			ip4Dst = "10.13.37.1",
 			udpSrc = 1234,
-			udpDst = 5678,	
+			udpDst = 5678,
 		}
 	end)
 	bufs = mem:bufArray(128)
 	local baseIP = parseIPAddress("10.0.42.1")
 	local flow = 0
 	local ctr = stats:newDevTxCounter(dev, "plain")
-	while mg.running() do
+	local runtime = timer:new(RUN_TIME_IN_SEC)
+	while (runTime == 0 or runtime:running()) and mg.running() do
 		bufs:alloc(PKT_SIZE)
 		for _, buf in ipairs(bufs) do
 			local pkt = buf:getUdpPacket()
@@ -67,4 +76,3 @@ function loadSlave(dev, queue, numFlows, showStats)
 	if showStats then ctr:finalize() end
 	dev:getStats()
 end
-
