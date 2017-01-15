@@ -1,13 +1,21 @@
---- This script implements a simple QoS test by generating two flows and measuring their latencies.
-local mg                = require "moongen"
+--
+-- Created by Ashok kumar (ashok@voereir.com).
+-- User: ashok
+-- Date: 13/01/17
+-- Time: 4:13 PM
+-- To change this template use File | Settings | File Templates.
+--
+
+--- This script is simple receiver of packets on dpdk NIC(s).
+local mg        = require "moongen"
 local memory    = require "memory"
 local device    = require "device"
-local ts                = require "timestamping"
+local ts        = require "timestamping"
 local filter    = require "filter"
-local stats             = require "stats"
-local hist              = require "histogram"
-local timer             = require "timer"
-local log               = require "log"
+local stats     = require "stats"
+local timer     = require "timer"
+local log       = require "log"
+local RUN_TIME_IN_SEC = 60
 
 function master(...)
         local devices = { ... }
@@ -48,7 +56,8 @@ function counterSlave(queue)
         -- however, queue statistics are also not yet implemented and the DPDK abstraction is somewhat annoying
         local bufs = memory.bufArray(256)
         local ctrs = {}
-        while mg.running(100) do
+        local runtime = timer:new(RUN_TIME_IN_SEC)
+	    while (runTime == 0 or runtime:running()) and mg.running() do
                 local rx = queue:recv(bufs)
                 for i = 1, rx do
                         local buf = bufs[i]
