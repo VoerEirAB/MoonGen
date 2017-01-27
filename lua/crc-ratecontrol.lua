@@ -18,10 +18,9 @@ local mempool
 --   increases precision at low non-cbr rates
 -- @param n optional, number of packets to send (defaults to full bufs)
 function txQueue:sendWithDelay(bufs, targetRate, n)
-    --Ashok: Disable flag check since it is bahaving strange.
-	--if not self.dev.crcPatch then
-	--	log:fatal("Driver does not support disabling the CRC flag. This feature requires a patched driver.")
-	--end
+	if not self.dev.crcPatch then
+		log:fatal("Driver does not support disabling the CRC flag. This feature requires a patched driver.")
+	end
 	targetRate = targetRate or 14.88
 	self.used = true
 	mempool = mempool or memory.createMemPool{
