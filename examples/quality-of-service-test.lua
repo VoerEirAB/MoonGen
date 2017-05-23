@@ -36,7 +36,7 @@ function master(args)
 	-- however, this example scripts shows the explicit configuration instead of implicit magic
 	if args.txDev == args.rxDev then
 		-- sending and receiving from the same port
-		txDev = device.config{port = args.txDev, rxQueues = 1, txQueues = 2}
+		txDev = device.config{port = args.txDev, rxQueues = 2, txQueues = 3}
 		rxDev = txDev
 	else
 		-- two different ports, different configuration

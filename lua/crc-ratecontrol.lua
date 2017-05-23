@@ -3,6 +3,7 @@ local pkt    = require "packet"
 local memory = require "memory"
 local ffi    = require "ffi"
 local log    = require "log"
+
 local txQueue = device.__txQueuePrototype
 local device = device.__devicePrototype
 local C = ffi.C

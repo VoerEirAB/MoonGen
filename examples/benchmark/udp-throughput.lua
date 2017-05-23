@@ -39,8 +39,8 @@ function loadSlave(dev, queue, numFlows, showStats)
 		buf:getUdpPacket():fill{
 			pktLength = PKT_SIZE,
 			ethSrc = queue,
-			ethDst = "fa:16:3e:10:15:48",
-			ip4Dst = "192.168.111.50",
+			ethDst = "10:11:12:13:14:15",
+			ip4Dst = "192.168.1.1",
 			udpSrc = 1234,
 			udpDst = 5678,	
 		}
