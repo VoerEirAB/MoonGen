@@ -1,3 +1,4 @@
 [submodule "libmoon"]
 	path = libmoon
 	url = http://git.voereir.io/voereir/libmoon
+	branch = master
