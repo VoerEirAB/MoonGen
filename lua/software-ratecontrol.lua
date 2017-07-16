@@ -4,6 +4,7 @@ local mg      = require "moongen"
 local serpent = require "Serpent"
 local memory  = require "memory"
 local log     = require "log"
+local namespaces = require "namespaces"
 
 local C = ffi.C
 
@@ -20,6 +21,7 @@ ffi.cdef[[
 
 local mod = {}
 local rateLimiter = {}
+local ns = namespaces:get()
 mod.rateLimiter = rateLimiter
 
 rateLimiter.__index = rateLimiter
@@ -54,19 +56,38 @@ function mod:new(queue, mode, delay)
 		delay = delay,
 		queue = queue
 	}, rateLimiter)
-	mg.startTask("__MG_RATE_LIMITER_MAIN", obj.ring, queue.id, queue.qid, mode, delay, queue.dev:getLinkStatus().speed)
-	return obj
+	ns.delay = delay
+	local main_task = mg.startTask("__MG_RATE_LIMITER_MAIN", obj.ring, queue.id, queue.qid, mode, queue.dev:getLinkStatus().speed)
+	return obj, main_task
 end
 
-
-function __MG_RATE_LIMITER_MAIN(ring, devId, qid, mode, delay, speed)
+function __MG_RATE_LIMITER_MAIN(ring, devId, qid, mode, speed)
 	if mode == "cbr" then
-		C.mg_rate_limiter_cbr_main_loop(ring, devId, qid, delay)
+		C.mg_rate_limiter_cbr_main_loop(ring, devId, qid, ns.delay)
 	elseif mode == "poisson" then
-		C.mg_rate_limiter_poisson_main_loop(ring, devId, qid, delay, speed)
+		C.mg_rate_limiter_poisson_main_loop(ring, devId, qid, ns.delay, speed)
 	else
 		log:fatal("generic IPG mode NYI, please specifiy either cbr or poisson")
 	end
+end
+
+function mod.resetLimiter(obj, main_task, mode, delay)
+	--- stop rate Limiter task ---
+    mg.setRuntime(0)
+	while main_task:isRunning() do
+		print ('Rate Limiter Task is still in running state.')
+		mg.sleepMillis(1000)
+	end
+	print ('Rate Limiter Task stopped.')
+
+    --- start rate Limiter task ---
+	mg.setRuntime(10000) --- runtime should be greater than execution time ---
+	ns.delay = delay
+    main_task = mg.startTask("__MG_RATE_LIMITER_MAIN", obj.ring, obj.queue.id, obj.queue.qid, mode, obj.queue.dev:getLinkStatus().speed)
+	if main_task:isRunning() then
+		print ('Rate Limiter Task started.')
+	end
+	return main_task
 end
 
 return mod
