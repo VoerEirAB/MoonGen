@@ -62,12 +62,12 @@ end
 -- @param queue the wrapped tx queue
 -- @param mode optional, either "cbr", "poisson", or "custom". Defaults to custom.
 -- @param delay optional, inter-departure time in nanoseconds for cbr, 1/lambda (average) for poisson
-function mod:new(queue, mode, delay)
+function mod:new(queue, mode, delay, ring_size, socket_id)
 	mode = mode or "custom"
 	if mode ~= "poisson" and mode ~= "cbr" and mode ~= "custom" then
 		log:fatal("Unsupported mode " .. mode)
 	end
-	local ring = pipe:newPacketRing()
+	local ring = pipe:newPacketRing(ring_size, socket_id)
 	local obj = setmetatable({
 		ring = ring.ring,
 		mode = mode,
