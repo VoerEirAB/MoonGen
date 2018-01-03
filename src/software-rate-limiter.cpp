@@ -3,7 +3,7 @@
 #include <rte_ring.h>
 #include <rte_mbuf.h>
 #include <stdint.h>
-#include <rte_ethdev.h> 
+#include <rte_ethdev.h>
 #include <rte_mempool.h>
 #include <rte_ether.h>
 #include <rte_cycles.h>
@@ -24,11 +24,11 @@
 // FIXME: duplicate code (needed for a paper, so the usual quick & dirty hacks)
 namespace rate_limiter {
 	constexpr int batch_size = 64;
-	
+
 	// FIXME: NYI
 	static inline void main_loop(struct rte_ring* ring, uint8_t device, uint16_t queue) {
 	}
-	
+
 	static inline void main_loop_poisson(struct rte_ring* ring, uint8_t device, uint16_t queue, uint32_t target, uint32_t link_speed) {
 		uint64_t tsc_hz = rte_get_tsc_hz();
 		// control IPGs instead of IDT as IDTs < packet_time are physically impossible
@@ -60,29 +60,38 @@ namespace rate_limiter {
 		}
 	}
 
+    static inline void send_packets(struct rte_ring* ring, uint8_t device, uint16_t queue){
+        struct rte_mbuf* bufs[batch_size];
+        int n = ring_dequeue(ring, reinterpret_cast<void**>(bufs), batch_size);
+        if (n == 0){
+            int cnt = batch_size;
+            int t = 0;
+            while(cnt > 0){
+                int ret = rte_eth_tx_burst(device, queue, bufs + t, cnt);
+                t += ret;
+                cnt-=ret;
+            }
+        }
+    }
+
+
 	static inline void main_loop_cbr(struct rte_ring* ring, uint8_t device, uint16_t queue, uint32_t target) {
+	    uint64_t tx_next_cycle;
 		uint64_t tsc_hz = rte_get_tsc_hz();
-		uint64_t id_cycles = (uint64_t) (target / (1000000000.0 / ((double) tsc_hz)));
-		uint64_t next_send = 0;
-		struct rte_mbuf* bufs[batch_size];
-		while (libmoon::is_running(0)) {
-			int rc = ring_dequeue(ring, reinterpret_cast<void**>(bufs), batch_size);
-			uint64_t cur = rte_get_tsc_cycles();
-			// nothing sent for 10 ms, restart rate control
-			if (((int64_t) cur - (int64_t) next_send) > (int64_t) tsc_hz / 100) {
-				next_send = cur;
-			}
-			if (rc == 0) {
-				for (int i = 0; i < batch_size; i++) {
-					while ((cur = rte_get_tsc_cycles()) < next_send);
-					next_send += id_cycles;
-					while (rte_eth_tx_burst(device, queue, bufs + i, 1) == 0);
-				}
-			} else if (!libmoon::is_running(0)) {
-				return;
-			}
-		}
-	}
+		uint64_t cycles = (uint64_t) (target / (1000000000.0 / ((double) tsc_hz)));
+		cycles*=batch_size;
+        uint64_t curr_tsc = rte_get_tsc_cycles();
+        tx_next_cycle = curr_tsc + cycles;
+        send_packets(ring, device, queue);
+        curr_tsc = rte_get_tsc_cycles();
+        while (libmoon::is_running(0)){
+            if (curr_tsc >= tx_next_cycle){
+                tx_next_cycle = curr_tsc + cycles;
+                send_packets(ring, device, queue);
+            }
+            curr_tsc = rte_get_tsc_cycles();
+        }
+    }
 }
 
 extern "C" {
@@ -97,6 +106,10 @@ extern "C" {
 	void mg_rate_limiter_main_loop(rte_ring* ring, uint8_t device, uint16_t queue) {
 		// NYI
 		//rate_limiter::main_loop(ring, device, queue);
+	}
+
+	void send_packets(rte_ring* ring, uint8_t device, uint16_t queue){
+	    rate_limiter::send_packets(ring, device, queue);
 	}
 }
 
