@@ -81,6 +81,7 @@ end
 
 
 function __MG_RATE_LIMITER_MAIN(ring, devId, qid, mode, delay, speed, ctl)
+	ctl.stop = 0  -- Start the rate limiter
 	if mode == "cbr" then
 		C.mg_rate_limiter_cbr_main_loop(ring, devId, qid, delay, ctl)
 	elseif mode == "poisson" then
