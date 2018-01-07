@@ -35,6 +35,11 @@ namespace rate_limiter {
 			return libmoon::is_running(0) && !stop.load(std::memory_order_relaxed);
 		};
 
+		inline void get_packets_count() {
+		    uint64_t value = count.load(std::memory_order_relaxed);
+		    printf("Value returned : %llu\n", value);
+		};
+
 		inline void count_packets(uint64_t n) {
 			count.fetch_add(n, std::memory_order_relaxed);
 		};
@@ -114,7 +119,15 @@ namespace rate_limiter {
 		}
 	}
 
-	static inline void main_loop_cbr(struct rte_ring* ring, uint8_t device, uint16_t queue, uint32_t target, limiter_control* ctl) {
+    static inline void add_payload(struct rte_mbuf* pkt, int payload)
+    {
+        char* data;
+        data = rte_pktmbuf_append(pkt, sizeof(int));
+        if (data != NULL)
+            rte_memcpy(data, &payload, sizeof(int));
+    }
+
+	static inline void main_loop_cbr(struct rte_ring* ring, uint8_t device, uint16_t queue, uint32_t target, int payload, limiter_control* ctl) {
 		uint64_t tsc_hz = rte_get_tsc_hz();
 		uint64_t id_cycles = (uint64_t) (target / (1000000000.0 / ((double) tsc_hz)));
 		uint64_t next_send = 0;
@@ -130,6 +143,7 @@ namespace rate_limiter {
 				for (int i = 0; i < n; i++) {
 					while ((cur = rte_get_tsc_cycles()) < next_send);
 					next_send += id_cycles;
+					add_payload(bufs[i], payload);
 					while (rte_eth_tx_burst(device, queue, bufs + i, 1) == 0) {
 						// mellanox nics like to not accept packets when stopping for... reasons
 						if (!ctl->running()) {
@@ -138,6 +152,7 @@ namespace rate_limiter {
 					}
 				}
 				ctl->count_packets(n);
+//				ctl->get_packets_count();
 			} else if (!ctl->running()) {
 				return;
 			}
@@ -146,8 +161,8 @@ namespace rate_limiter {
 }
 
 extern "C" {
-	void mg_rate_limiter_cbr_main_loop(rte_ring* ring, uint8_t device, uint16_t queue, uint32_t target, rate_limiter::limiter_control* ctl) {
-		rate_limiter::main_loop_cbr(ring, device, queue, target, ctl);
+	void mg_rate_limiter_cbr_main_loop(rte_ring* ring, uint8_t device, uint16_t queue, uint32_t target, int payload, rate_limiter::limiter_control* ctl) {
+		rate_limiter::main_loop_cbr(ring, device, queue, target, payload, ctl);
 	}
 
 	void mg_rate_limiter_poisson_main_loop(rte_ring* ring, uint8_t device, uint16_t queue, uint32_t target, uint32_t link_speed, rate_limiter::limiter_control* ctl) {

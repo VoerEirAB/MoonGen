@@ -19,7 +19,7 @@ ffi.cdef[[
 	};
 
 	void mg_rate_limiter_main_loop(struct rte_ring* ring, uint8_t device, uint16_t queue, uint32_t link_speed, struct limiter_control* ctl);
-	void mg_rate_limiter_cbr_main_loop(struct rte_ring* ring, uint8_t device, uint16_t queue, uint32_t target, struct limiter_control* ctl);
+	void mg_rate_limiter_cbr_main_loop(struct rte_ring* ring, uint8_t device, uint16_t queue, uint32_t target, int payload, struct limiter_control* ctl);
 	void mg_rate_limiter_poisson_main_loop(struct rte_ring* ring, uint8_t device, uint16_t queue, uint32_t target, uint32_t link_speed, struct limiter_control* ctl);
 ]]
 
@@ -62,7 +62,7 @@ end
 -- @param queue the wrapped tx queue
 -- @param mode optional, either "cbr", "poisson", or "custom". Defaults to custom.
 -- @param delay optional, inter-departure time in nanoseconds for cbr, 1/lambda (average) for poisson
-function mod:new(queue, mode, delay, ring_size, socket_id)
+function mod:new(queue, mode, delay, ring_size, socket_id, payload)
 	mode = mode or "custom"
 	if mode ~= "poisson" and mode ~= "cbr" and mode ~= "custom" then
 		log:fatal("Unsupported mode " .. mode)
@@ -75,15 +75,15 @@ function mod:new(queue, mode, delay, ring_size, socket_id)
 		queue = queue,
 		ctl = memory.alloc("struct limiter_control*", ffi.sizeof("struct limiter_control"))
 	}, rateLimiter)
-	mg.startTask("__MG_RATE_LIMITER_MAIN", obj.ring, queue.id, queue.qid, mode, delay, queue.dev:getLinkStatus().speed, obj.ctl)
+	mg.startTask("__MG_RATE_LIMITER_MAIN", obj.ring, queue.id, queue.qid, mode, delay, queue.dev:getLinkStatus().speed, payload, obj.ctl)
 	return obj
 end
 
 
-function __MG_RATE_LIMITER_MAIN(ring, devId, qid, mode, delay, speed, ctl)
+function __MG_RATE_LIMITER_MAIN(ring, devId, qid, mode, delay, speed, payload, ctl)
 	ctl.stop = 0  -- Start the rate limiter
 	if mode == "cbr" then
-		C.mg_rate_limiter_cbr_main_loop(ring, devId, qid, delay, ctl)
+		C.mg_rate_limiter_cbr_main_loop(ring, devId, qid, delay, payload, ctl)
 	elseif mode == "poisson" then
 		C.mg_rate_limiter_poisson_main_loop(ring, devId, qid, delay, speed, ctl)
 	else
