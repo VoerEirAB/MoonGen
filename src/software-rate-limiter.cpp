@@ -127,11 +127,12 @@ namespace rate_limiter {
             rte_memcpy(data, &payload, sizeof(int));
     }
 
-	static inline void main_loop_cbr(struct rte_ring* ring, uint8_t device, uint16_t queue, uint32_t target, int payload, limiter_control* ctl) {
+	static inline void main_loop_cbr(struct rte_ring* ring, uint8_t device, uint16_t queue, uint32_t target, limiter_control* ctl) {
 		uint64_t tsc_hz = rte_get_tsc_hz();
 		uint64_t id_cycles = (uint64_t) (target / (1000000000.0 / ((double) tsc_hz)));
 		uint64_t next_send = 0;
 		struct rte_mbuf* bufs[batch_size];
+
 		while (libmoon::is_running(0)) {
 			int n = ring_dequeue(ring, reinterpret_cast<void**>(bufs), batch_size);
 			uint64_t cur = rte_get_tsc_cycles();
@@ -143,17 +144,74 @@ namespace rate_limiter {
 				for (int i = 0; i < n; i++) {
 					while ((cur = rte_get_tsc_cycles()) < next_send);
 					next_send += id_cycles;
-					add_payload(bufs[i], payload);
-					while (rte_eth_tx_burst(device, queue, bufs + i, 1) == 0) {
-						// mellanox nics like to not accept packets when stopping for... reasons
+					while(rte_eth_tx_burst(device, queue, bufs + i, 1) == 0){
 						if (!ctl->running()) {
 							return;
 						}
 					}
 				}
 				ctl->count_packets(n);
-//				ctl->get_packets_count();
 			} else if (!ctl->running()) {
+				return;
+			}
+		}
+	}
+	
+	static void eth_tx_buffer_retry(struct rte_mbuf **pkts, uint16_t unsent, void *userdata) {
+        int port_id = (uintptr_t) userdata;
+        unsigned int _sent = 0;
+        do {
+                /* Note: hard-coded TX queue */
+                _sent += rte_eth_tx_burst(port_id, 0, &pkts[_sent],
+                                          unsent - _sent);
+        } while (_sent != unsent);
+    }
+    
+	static inline void main_loop_custom(struct rte_ring* ring, uint8_t device, uint16_t queue, uint32_t target, limiter_control* ctl) {
+		uint64_t tsc_hz = rte_get_tsc_hz();
+		uint64_t id_cycles = (uint64_t) (target / (1000000000.0 / ((double) tsc_hz)));
+		uint64_t next_send = 0;
+		struct rte_mbuf* bufs[batch_size];
+		uint64_t invalid_pkts = 0;
+		static struct rte_eth_dev_tx_buffer *tx_buffer[RTE_MAX_ETHPORTS];
+		/* Initialize TX buffers */
+        tx_buffer[device] = (struct rte_eth_dev_tx_buffer *) rte_zmalloc_socket("tx_buffer",
+                             RTE_ETH_TX_BUFFER_SIZE(batch_size), 0,
+                             rte_eth_dev_socket_id(device));
+        if (tx_buffer[device] == NULL)
+            rte_exit(EXIT_FAILURE, "Cannot allocate buffer for tx on port %u\n",
+                                        device);
+		struct rte_eth_dev_tx_buffer *buffer = tx_buffer[device];
+        rte_eth_tx_buffer_init(tx_buffer[device], batch_size);
+        int ret = rte_eth_tx_buffer_set_err_callback(tx_buffer[device],
+                                rte_eth_tx_buffer_count_callback,
+                                &invalid_pkts);
+        if (ret < 0)
+            rte_exit(EXIT_FAILURE,
+                        "Cannot set error callback for tx buffer on port %u\n", device);
+
+		while (libmoon::is_running(0)) {
+			int n = ring_dequeue(ring, reinterpret_cast<void**>(bufs), batch_size);
+			uint64_t cur = rte_get_tsc_cycles();
+			// nothing sent for 10 ms, restart rate control
+			if (((int64_t) cur - (int64_t) next_send) > (int64_t) tsc_hz / 100) {
+				next_send = cur;
+			}
+			if (n) {
+				for (int i = 0; i < n; i++) {
+					while ((cur = rte_get_tsc_cycles()) < next_send);
+					next_send += id_cycles;
+					rte_eth_tx_buffer(device, queue, buffer, bufs[i]);
+					ctl->count_packets(1);
+					if (!ctl->running()) {
+						ctl->count_packets(-invalid_pkts);
+						printf("error packers: %lu", invalid_pkts);
+						return;
+					}
+				}
+			} else if (!ctl->running()) {
+				ctl->count_packets(-invalid_pkts);
+				printf("error packers: %lu", invalid_pkts);
 				return;
 			}
 		}
@@ -163,6 +221,10 @@ namespace rate_limiter {
 extern "C" {
 	void mg_rate_limiter_cbr_main_loop(rte_ring* ring, uint8_t device, uint16_t queue, uint32_t target, int payload, rate_limiter::limiter_control* ctl) {
 		rate_limiter::main_loop_cbr(ring, device, queue, target, payload, ctl);
+	}
+	
+	void mg_rate_limiter_custom_main_loop(rte_ring* ring, uint8_t device, uint16_t queue, uint32_t target, rate_limiter::limiter_control* ctl) {
+		rate_limiter::main_loop_custom(ring, device, queue, target, ctl);
 	}
 
 	void mg_rate_limiter_poisson_main_loop(rte_ring* ring, uint8_t device, uint16_t queue, uint32_t target, uint32_t link_speed, rate_limiter::limiter_control* ctl) {
