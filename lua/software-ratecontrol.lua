@@ -19,7 +19,8 @@ ffi.cdef[[
 	};
 
 	void mg_rate_limiter_main_loop(struct rte_ring* ring, uint8_t device, uint16_t queue, uint32_t link_speed, struct limiter_control* ctl);
-	void mg_rate_limiter_cbr_main_loop(struct rte_ring* ring, uint8_t device, uint16_t queue, uint32_t target, int payload, struct limiter_control* ctl);
+	void mg_rate_limiter_cbr_main_loop(struct rte_ring* ring, uint8_t device, uint16_t queue, uint32_t target, struct limiter_control* ctl);
+	void mg_rate_limiter_custom_main_loop(rte_ring* ring, uint8_t device, uint16_t queue, uint32_t target, rate_limiter::limiter_control* ctl);
 	void mg_rate_limiter_poisson_main_loop(struct rte_ring* ring, uint8_t device, uint16_t queue, uint32_t target, uint32_t link_speed, struct limiter_control* ctl);
 ]]
 
@@ -84,6 +85,8 @@ function __MG_RATE_LIMITER_MAIN(ring, devId, qid, mode, delay, speed, payload, c
 	ctl.stop = 0  -- Start the rate limiter
 	if mode == "cbr" then
 		C.mg_rate_limiter_cbr_main_loop(ring, devId, qid, delay, payload, ctl)
+	if mode == "custom" then
+		C.mg_rate_limiter_custom_main_loop(ring, devId, qid, delay, payload, ctl)
 	elseif mode == "poisson" then
 		C.mg_rate_limiter_poisson_main_loop(ring, devId, qid, delay, speed, ctl)
 	else
