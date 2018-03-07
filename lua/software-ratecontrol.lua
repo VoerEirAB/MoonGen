@@ -62,12 +62,13 @@ end
 -- @param queue the wrapped tx queue
 -- @param mode optional, either "cbr", "poisson", or "custom". Defaults to custom.
 -- @param delay optional, inter-departure time in nanoseconds for cbr, 1/lambda (average) for poisson
-function mod:new(queue, mode, delay)
+-- @param socket optional, NUMA socket ID
+function mod:new(queue, mode, delay, socket)
 	mode = mode or "custom"
 	if mode ~= "poisson" and mode ~= "cbr" and mode ~= "custom" then
 		log:fatal("Unsupported mode " .. mode)
 	end
-	local ring = pipe:newPacketRing()
+	local ring = pipe:newPacketRing(nil, socket)  -- use default size; use default socket if nil
 	local obj = setmetatable({
 		ring = ring.ring,
 		mode = mode,
@@ -75,7 +76,11 @@ function mod:new(queue, mode, delay)
 		queue = queue,
 		ctl = memory.alloc("struct limiter_control*", ffi.sizeof("struct limiter_control"))
 	}, rateLimiter)
-	mg.startTask("__MG_RATE_LIMITER_MAIN", obj.ring, queue.id, queue.qid, mode, delay, queue.dev:getLinkStatus().speed, obj.ctl)
+	if socket ~= nil then
+		mg.startTaskOnSocket(socket, "__MG_RATE_LIMITER_MAIN", obj.ring, queue.id, queue.qid, mode, delay, queue.dev:getLinkStatus().speed)
+	else
+		mg.startTask("__MG_RATE_LIMITER_MAIN", obj.ring, queue.id, queue.qid, mode, delay, queue.dev:getLinkStatus().speed)
+	end
 	return obj
 end
 
