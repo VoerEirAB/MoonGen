@@ -77,9 +77,9 @@ function mod:new(queue, mode, delay, socket)
 		ctl = memory.alloc("struct limiter_control*", ffi.sizeof("struct limiter_control"))
 	}, rateLimiter)
 	if socket ~= nil then
-		mg.startTaskOnSocket(socket, "__MG_RATE_LIMITER_MAIN", obj.ring, queue.id, queue.qid, mode, delay, queue.dev:getLinkStatus().speed)
+		mg.startTaskOnSocket(socket, "__MG_RATE_LIMITER_MAIN", obj.ring, queue.id, queue.qid, mode, delay, queue.dev:getLinkStatus().speed, obj.ctl)
 	else
-		mg.startTask("__MG_RATE_LIMITER_MAIN", obj.ring, queue.id, queue.qid, mode, delay, queue.dev:getLinkStatus().speed)
+		mg.startTask("__MG_RATE_LIMITER_MAIN", obj.ring, queue.id, queue.qid, mode, delay, queue.dev:getLinkStatus().speed, obj.ctl)
 	end
 	return obj
 end
